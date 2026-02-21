@@ -19,8 +19,8 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from src.rag import DirectRAGIndex, ProtocolChunk, load_protocols
-from src.llm_client import _mask_api_key, diagnose_with_rag
+from src_direct.rag import DirectRAGIndex, ProtocolChunk, load_protocols
+from src_direct.llm_client import _mask_api_key, diagnose_with_rag
 
 
 DEFAULT_CORPUS_DIR = Path("data/corpus")

@@ -41,7 +41,7 @@ def diagnose_with_rag(
     top_n: int = 5,
 ) -> list[dict]:
 
-    from src.prompts import build_diagnosis_prompt
+    from src_direct.prompts import build_diagnosis_prompt
 
     model = model or os.environ.get("DIAGNOSIS_MODEL", "gpt-4o")
     api_key = os.environ.get("OPENAI_API_KEY", "")

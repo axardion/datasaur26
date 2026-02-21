@@ -7,18 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-
-
-def _format_error(err: Exception) -> str:
-    if isinstance(err, httpx.HTTPStatusError):
-        body = (err.response.text or "")[:500]
-        if body:
-            return f"{err.response.status_code} {err.response.reason_phrase} — {body!r}"
-        return f"{err.response.status_code} {err.response.reason_phrase}"
-    msg = str(err).strip()
-    if msg:
-        return f"{type(err).__name__}: {msg}"
-    return repr(err)
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
@@ -37,8 +25,8 @@ from rich.text import Text
 @dataclass
 class EvaluationResult:
     protocol_id: str
-    accuracy_at_1: int
-    recall_at_3: int
+    accuracy_at_1: int  # 1 or 0
+    recall_at_3: int  # 1 or 0
     latency_s: float
     ground_truth: str
     top_prediction: str
@@ -52,8 +40,9 @@ async def evaluate_single(
     json_file: Path,
     semaphore: asyncio.Semaphore,
 ) -> EvaluationResult:
+    """Evaluate a single protocol against the endpoint."""
     async with semaphore:
-        with open(json_file, "r", encoding="utf-8") as f:
+        with open(json_file, "r") as f:
             data = json.load(f)
 
         protocol_id = data["protocol_id"]
@@ -73,26 +62,16 @@ async def evaluate_single(
         response.raise_for_status()
         result = response.json()
 
-        if "diagnoses" not in result:
-            raise ValueError(
-                f"Response missing 'diagnoses' key. Keys: {list(result.keys())}"
-            )
-        raw_diagnoses = result["diagnoses"]
-        if not isinstance(raw_diagnoses, list):
-            raise ValueError(
-                f"'diagnoses' must be a list, got {type(raw_diagnoses).__name__}"
-            )
-        diagnoses = sorted(
-            (d for d in raw_diagnoses if isinstance(d, dict) and "rank" in d),
-            key=lambda x: x.get("rank", 0),
-        )
+        diagnoses = sorted(result["diagnoses"], key=lambda x: x["rank"])
         top_3 = diagnoses[:3]
-        top_prediction = (
-            diagnoses[0].get("icd10_code", "") if diagnoses else ""
-        )
-        top_3_predictions = [d.get("icd10_code", "") for d in top_3]
 
+        top_prediction = diagnoses[0]["icd10_code"] if diagnoses else ""
+        top_3_predictions = [d["icd10_code"] for d in top_3]
+
+        # Accuracy@1: does the rank 1 prediction match ground truth?
         accuracy_at_1 = 1 if top_prediction == ground_truth else 0
+
+        # Recall@3: are any of the top 3 predictions in the valid icd_codes list?
         recall_at_3 = (
             1 if any(code in valid_icd_codes for code in top_3_predictions) else 0
         )
@@ -113,14 +92,11 @@ async def run_evaluation(
     endpoint: str,
     dataset_dir: Path,
     parallelism: int,
-    limit: int | None = None,
-    timeout_s: float = 120.0,
 ) -> list[EvaluationResult]:
+    """Run evaluation on all JSON files in the dataset directory."""
     console = Console()
 
-    json_files = sorted(dataset_dir.glob("*.json"))
-    if limit is not None:
-        json_files = json_files[:limit]
+    json_files = list(dataset_dir.glob("*.json"))
     if not json_files:
         console.print(f"[red]No JSON files found in {dataset_dir}[/red]")
         return []
@@ -131,8 +107,7 @@ async def run_evaluation(
             f"Endpoint: [yellow]{endpoint}[/yellow]\n"
             f"Dataset: [yellow]{dataset_dir}[/yellow]\n"
             f"Files: [yellow]{len(json_files)}[/yellow]\n"
-            f"Parallelism: [yellow]{parallelism}[/yellow]\n"
-            f"Timeout: [yellow]{timeout_s}s[/yellow]",
+            f"Parallelism: [yellow]{parallelism}[/yellow]",
             title="[bold white]Configuration[/bold white]",
             border_style="cyan",
         )
@@ -142,7 +117,7 @@ async def run_evaluation(
     results: list[EvaluationResult] = []
     errors: list[tuple[Path, Exception]] = []
 
-    async with httpx.AsyncClient(timeout=timeout_s) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -174,8 +149,7 @@ async def run_evaluation(
             f"\n[red]Encountered {len(errors)} errors during evaluation[/red]"
         )
         for path, err in errors[:5]:
-            msg = _format_error(err)
-            console.print(f"  [dim]• {path.name}:[/dim] [red]{msg}[/red]")
+            console.print(f"  [dim]• {path.name}: {err}[/dim]")
         if len(errors) > 5:
             console.print(f"  [dim]... and {len(errors) - 5} more[/dim]")
 
@@ -183,6 +157,7 @@ async def run_evaluation(
 
 
 def compute_metrics(results: list[EvaluationResult]) -> dict:
+    """Compute aggregated metrics from evaluation results."""
     if not results:
         return {}
 
@@ -214,7 +189,8 @@ def compute_metrics(results: list[EvaluationResult]) -> dict:
 
 
 def write_jsonl(results: list[EvaluationResult], output_path: Path):
-    with open(output_path, "w", encoding="utf-8") as f:
+    """Write results to JSONL file."""
+    with open(output_path, "w") as f:
         for r in results:
             line = {
                 "protocol_id": r.protocol_id,
@@ -232,11 +208,12 @@ def write_jsonl(results: list[EvaluationResult], output_path: Path):
 
 
 def write_metrics_json(submission_name: str, metrics: dict, output_path: Path):
+    """Write aggregated metrics to JSON file."""
     output_data = {
         "submission_name": submission_name,
         **metrics,
     }
-    with open(output_path, "w", encoding="utf-8") as f:
+    with open(output_path, "w") as f:
         json.dump(output_data, f, indent=2)
 
 
@@ -247,10 +224,12 @@ def display_summary(
     output_json: Path,
     console: Console,
 ):
+    """Display a beautiful summary of the evaluation results."""
     if not results:
         console.print("[red]No results to display[/red]")
         return
 
+    # Metrics table
     metrics_table = Table(
         title="[bold]Evaluation Metrics[/bold]",
         show_header=True,
@@ -266,6 +245,7 @@ def display_summary(
         "Total Protocols", f"[bold white]{metrics['total_protocols']}[/bold white]"
     )
 
+    # Latency table
     latency_table = Table(
         title="[bold]Latency Statistics[/bold]",
         show_header=True,
@@ -338,20 +318,6 @@ Examples:
         default=Path("data/evals"),
         help="Output directory for results (default: data/evals)",
     )
-    parser.add_argument(
-        "-l",
-        "--limit",
-        type=int,
-        default=None,
-        help="Evaluate only the first N JSON files (default: all)",
-    )
-    parser.add_argument(
-        "-t",
-        "--timeout",
-        type=float,
-        default=120.0,
-        help="Request timeout in seconds (default: 120)",
-    )
 
     args = parser.parse_args()
     console = Console()
@@ -373,8 +339,6 @@ Examples:
             endpoint=args.endpoint,
             dataset_dir=args.dataset_dir,
             parallelism=args.parallelism,
-            limit=args.limit,
-            timeout_s=args.timeout,
         )
     )
 

@@ -1,12 +1,3 @@
-"""
-DIRECT-style RAG: load Kazakhstan clinical protocols, chunk, index with TF-IDF,
-retrieve relevant premises for symptom queries.
-
-DiReCT (Diagnostic Reasoning for Clinical Notes) uses a knowledge graph to
-provide "premises" (golden standards) to the LLM. Here we use retrieved
-protocol text as premises for diagnosis with ICD-10 codes.
-"""
-
 import json
 import re
 from pathlib import Path
@@ -22,7 +13,6 @@ CHUNK_OVERLAP = 200
 
 @dataclass
 class ProtocolChunk:
-    """Single chunk of a protocol with metadata."""
     text: str
     protocol_id: str
     icd_codes: list[str]
@@ -31,12 +21,10 @@ class ProtocolChunk:
 
 
 def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
-    """Split text into overlapping chunks (by character, trying to break at sentence boundaries)."""
     if not text or not text.strip():
         return []
     text = text.replace("\ufeff", "").strip()
     chunks = []
-    # Prefer splitting on double newline (paragraph) or single newline
     parts = re.split(r"\n\s*\n", text)
     current = ""
     for part in parts:
@@ -47,7 +35,6 @@ def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) 
             current = f"{current}\n\n{part}".strip() if current else part
         else:
             if current:
-                # Split current if still too long
                 while len(current) > size:
                     chunk = current[:size]
                     last_break = max(chunk.rfind(". "), chunk.rfind(".\n"), chunk.rfind(" "))
@@ -66,10 +53,26 @@ def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) 
     return chunks
 
 
-def load_protocols_from_dir(corpus_dir: Path) -> list[dict]:
-    """Load all JSON protocol files from a directory (flat or nested)."""
+def load_protocols_from_jsonl(jsonl_path: Path) -> list[dict]:
     protocols = []
-    for path in corpus_dir.rglob("*.json"):
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                if "text" in data and "icd_codes" in data:
+                    protocols.append(data)
+            except json.JSONDecodeError:
+                continue
+    return protocols
+
+
+def load_protocols_from_dir(corpus_dir: Path) -> list[dict]:
+    paths = sorted(corpus_dir.rglob("*.json"), key=lambda p: str(p))
+    protocols = []
+    for path in paths:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -80,8 +83,19 @@ def load_protocols_from_dir(corpus_dir: Path) -> list[dict]:
     return protocols
 
 
+def load_protocols(corpus_path: Path) -> list[dict]:
+    corpus_path = Path(corpus_path)
+    if corpus_path.is_file():
+        if corpus_path.suffix.lower() == ".jsonl":
+            return load_protocols_from_jsonl(corpus_path)
+        return []
+    jsonl_file = corpus_path / "protocols_corpus.jsonl"
+    if jsonl_file.is_file():
+        return load_protocols_from_jsonl(jsonl_file)
+    return load_protocols_from_dir(corpus_path)
+
+
 def build_corpus(protocols: list[dict]) -> tuple[list[ProtocolChunk], list[str]]:
-    """Build list of ProtocolChunk and list of chunk texts for vectorizer."""
     chunks: list[ProtocolChunk] = []
     texts: list[str] = []
     for p in protocols:
@@ -106,11 +120,9 @@ def build_corpus(protocols: list[dict]) -> tuple[list[ProtocolChunk], list[str]]
 
 
 class DirectRAGIndex:
-    """TF-IDF index over protocol chunks for DIRECT-style retrieval."""
-
-    def __init__(self, corpus_dir: Path):
-        self.corpus_dir = Path(corpus_dir)
-        self.protocols = load_protocols_from_dir(self.corpus_dir)
+    def __init__(self, corpus_path: Path):
+        self.corpus_path = Path(corpus_path)
+        self.protocols = load_protocols(self.corpus_path)
         self.chunks, self.texts = build_corpus(self.protocols)
         self.vectorizer = TfidfVectorizer(
             max_features=50_000,
@@ -123,7 +135,6 @@ class DirectRAGIndex:
         self.matrix = self.vectorizer.fit_transform(self.texts) if self.texts else None
 
     def retrieve(self, query: str, top_k: int = 10) -> list[ProtocolChunk]:
-        """Return top-k most relevant protocol chunks for the symptom query."""
         if not self.chunks or self.matrix is None:
             return []
         q_vec = self.vectorizer.transform([query])

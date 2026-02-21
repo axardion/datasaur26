@@ -1,58 +1,86 @@
-"""
-DIRECT RAG diagnostic server (DiReCT-style).
-
-Uses retrieval-augmented generation:
-1. Load Kazakhstan clinical protocols from corpus (e.g. data/test_set).
-2. On each request: retrieve relevant protocol chunks (premises) by symptoms.
-3. Call LLM with DiReCT-style prompt (premises + symptoms) → top-N diagnoses with ICD-10.
-
-Run:
-  uv run uvicorn src.direct_rag_server:app --host 127.0.0.1 --port 8000
-
-Environment:
-  OPENAI_API_KEY       - API key for GPT-OSS (hub.qazcode.ai)
-  OPENAI_BASE_URL      - Optional, default https://hub.qazcode.ai
-  CORPUS_DIR           - Path to protocol JSONs (default: data/test_set)
-  DIAGNOSIS_MODEL      - Model name (default: gpt-4o)
-"""
-
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+_project_root = Path(__file__).resolve().parent.parent
+_env_path = _project_root / ".env"
+_env_loaded_from: str
+if _env_path.exists():
+    load_dotenv(dotenv_path=_env_path, override=True)
+    _env_loaded_from = str(_env_path)
+else:
+    _cwd_env = Path.cwd() / ".env"
+    load_dotenv(dotenv_path=_cwd_env, override=True)
+    _env_loaded_from = str(_cwd_env) if _cwd_env.exists() else "(none found)"
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from src.rag import DirectRAGIndex, ProtocolChunk
-from src.llm_client import diagnose_with_rag
+from src.rag import DirectRAGIndex, ProtocolChunk, load_protocols
+from src.llm_client import _mask_api_key, diagnose_with_rag
 
 
-# Default corpus: test set (each file has text + icd_codes)
-CORPUS_DIR = Path(os.environ.get("CORPUS_DIR", "data/test_set"))
+DEFAULT_CORPUS_DIR = Path("data/corpus")
+FALLBACK_CORPUS_DIR = Path("data/test_set")
+CORPUS_DIR = Path(os.environ.get("CORPUS_DIR", str(DEFAULT_CORPUS_DIR)))
 TOP_K_RETRIEVE = 12
 TOP_N_DIAGNOSES = 5
 
-# Global RAG index (loaded at startup)
 _rag_index: Optional[DirectRAGIndex] = None
+_corpus_dir_used: Optional[Path] = None
+
+
+def _count_protocols_in_dir(path: Path) -> int:
+    return len(load_protocols(path))
 
 
 def get_rag_index() -> DirectRAGIndex:
-    global _rag_index
+    global _rag_index, _corpus_dir_used
     if _rag_index is None:
-        if not CORPUS_DIR.exists():
-            raise FileNotFoundError(f"Corpus directory not found: {CORPUS_DIR}")
-        _rag_index = DirectRAGIndex(CORPUS_DIR)
+        corpus_to_use = CORPUS_DIR
+        if not corpus_to_use.exists():
+            if FALLBACK_CORPUS_DIR.exists():
+                print(f"Warning: CORPUS_DIR {corpus_to_use} not found. Using fallback: {FALLBACK_CORPUS_DIR}")
+                print("  → Unpack corpus.zip into data/corpus for the real knowledge base.")
+                corpus_to_use = FALLBACK_CORPUS_DIR
+            else:
+                raise FileNotFoundError(
+                    f"Corpus directory not found: {corpus_to_use}. "
+                    f"Unpack corpus.zip into data/corpus or set CORPUS_DIR."
+                )
+        n = _count_protocols_in_dir(corpus_to_use)
+        if n == 0:
+            if corpus_to_use == CORPUS_DIR and FALLBACK_CORPUS_DIR.exists():
+                print(f"Warning: No protocol JSONs in {corpus_to_use}. Using fallback: {FALLBACK_CORPUS_DIR}")
+                corpus_to_use = FALLBACK_CORPUS_DIR
+                n = _count_protocols_in_dir(corpus_to_use)
+            if n == 0:
+                raise FileNotFoundError(
+                    f"No protocol JSONs (with 'text' and 'icd_codes') in {corpus_to_use}. "
+                    "Unpack corpus.zip into data/corpus."
+                )
+        _corpus_dir_used = corpus_to_use
+        _rag_index = DirectRAGIndex(corpus_to_use)
     return _rag_index
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    model = os.environ.get("DIAGNOSIS_MODEL", "gpt-4o")
     print("\n🏥 DIRECT RAG Diagnostic Server (DiReCT-style)")
     print("=" * 50)
-    print(f"Corpus: {CORPUS_DIR}")
+    print(f".env:    {_env_loaded_from}")
+    print(f"api_key: {_mask_api_key(api_key)}")
+    print(f"model:   {model}")
+    print(f"Corpus:  {CORPUS_DIR}")
     try:
         idx = get_rag_index()
+        used = _corpus_dir_used or CORPUS_DIR
+        print(f"RAG corpus: {used}")
         print(f"Loaded {len(idx.chunks)} chunks from {len(idx.protocols)} protocols")
     except Exception as e:
         print(f"Warning: RAG index failed to load: {e}")
@@ -80,37 +108,56 @@ class DiagnoseResponse(BaseModel):
     diagnoses: list[Diagnosis]
 
 
-def chunks_to_premises(chunks: list[ProtocolChunk], max_chars: int = 6000) -> list[str]:
-    """Turn retrieved chunks into premise strings, respecting total length."""
+def diversify_chunks(
+    chunks: list[ProtocolChunk],
+    max_per_protocol: int = 4,
+) -> list[ProtocolChunk]:
+    if not chunks:
+        return []
+    seen: dict[str, int] = {}
+    out: list[ProtocolChunk] = []
+    for c in chunks:
+        n = seen.get(c.protocol_id, 0)
+        if n < max_per_protocol:
+            seen[c.protocol_id] = n + 1
+            out.append(c)
+    return out
+
+
+def chunks_to_premises(
+    chunks: list[ProtocolChunk], max_total_chars: int = 80_000
+) -> list[str]:
     premises: list[str] = []
     total = 0
     for c in chunks:
-        if total + len(c.text) > max_chars:
+        if total >= max_total_chars:
             break
-        premises.append(c.text[:2000])  # cap single chunk
-        total += len(premises[-1])
+        premises.append(c.text)
+        total += len(c.text)
     return premises
 
 
 @app.post("/diagnose", response_model=DiagnoseResponse)
 async def handle_diagnose(request: DiagnoseRequest) -> DiagnoseResponse:
-    """Run DIRECT RAG: retrieve premises from protocols, then LLM diagnosis."""
     symptoms = (request.symptoms or "").strip()
     if not symptoms:
         return DiagnoseResponse(diagnoses=[])
 
-    try:
-        rag = get_rag_index()
-        chunks = rag.retrieve(symptoms, top_k=TOP_K_RETRIEVE)
-        premises = chunks_to_premises(chunks)
-    except Exception:
-        premises = []
-
+    rag = get_rag_index()
+    chunks = rag.retrieve(symptoms, top_k=TOP_K_RETRIEVE)
+    chunks = diversify_chunks(chunks, max_per_protocol=4)
+    premises = chunks_to_premises(chunks)
     if not premises:
-        # No corpus or retrieval failed: still call LLM without premises
-        premises = ["No protocol excerpts available. Use your clinical knowledge and ICD-10."]
+        raise HTTPException(status_code=503, detail="No protocol premises retrieved")
 
-    raw = diagnose_with_rag(symptoms, premises, top_n=TOP_N_DIAGNOSES)
+    try:
+        raw = diagnose_with_rag(symptoms, premises, top_n=TOP_N_DIAGNOSES)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"LLM diagnosis failed: {type(e).__name__}: {e}",
+        ) from e
+
     diagnoses = [
         Diagnosis(
             rank=i,

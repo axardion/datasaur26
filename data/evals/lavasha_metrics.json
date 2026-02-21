@@ -1,0 +1,11 @@
+{
+  "submission_name": "lavasha",
+  "total_protocols": 10,
+  "accuracy_at_1_percent": 30.0,
+  "recall_at_3_percent": 50.0,
+  "latency_avg_s": 9.516,
+  "latency_min_s": 3.659,
+  "latency_max_s": 13.465,
+  "latency_p50_s": 9.791,
+  "latency_p95_s": 13.537
+}

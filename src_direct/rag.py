@@ -89,7 +89,7 @@ def load_protocols(corpus_path: Path) -> list[dict]:
         if corpus_path.suffix.lower() == ".jsonl":
             return load_protocols_from_jsonl(corpus_path)
         return []
-    jsonl_file = corpus_path / "protocols_corpus.jsonl"
+    jsonl_file = corpus_path / "protocols_only_complaints_anamnesis_filtered.jsonl"
     if jsonl_file.is_file():
         return load_protocols_from_jsonl(jsonl_file)
     return load_protocols_from_dir(corpus_path)

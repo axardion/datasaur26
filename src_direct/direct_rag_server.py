@@ -1,8 +1,11 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+log = logging.getLogger(__name__)
 
 _project_root = Path(__file__).resolve().parent.parent
 _env_path = _project_root / ".env"
@@ -153,6 +156,7 @@ async def handle_diagnose(request: DiagnoseRequest) -> DiagnoseResponse:
     try:
         raw = diagnose_with_rag(symptoms, premises, top_n=TOP_N_DIAGNOSES)
     except Exception as e:
+        log.exception("LLM diagnosis failed")
         raise HTTPException(
             status_code=502,
             detail=f"LLM diagnosis failed: {type(e).__name__}: {e}",

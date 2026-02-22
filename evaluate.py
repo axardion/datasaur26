@@ -8,6 +8,18 @@ from pathlib import Path
 
 import httpx
 from rich.console import Console
+
+
+def _format_error(err: Exception) -> str:
+    if isinstance(err, httpx.HTTPStatusError):
+        body = (err.response.text or "").strip()[:500]
+        if body:
+            return f"{err.response.status_code} {err.response.reason_phrase} — {body}"
+        return f"{err.response.status_code} {err.response.reason_phrase}"
+    msg = str(err).strip()
+    if msg:
+        return f"{type(err).__name__}: {msg}"
+    return f"{type(err).__name__}: {repr(err)}"
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -92,22 +104,27 @@ async def run_evaluation(
     endpoint: str,
     dataset_dir: Path,
     parallelism: int,
+    limit: int | None = None,
 ) -> list[EvaluationResult]:
     """Run evaluation on all JSON files in the dataset directory."""
     console = Console()
 
-    json_files = list(dataset_dir.glob("*.json"))
+    json_files = sorted(dataset_dir.glob("*.json"))
     if not json_files:
         console.print(f"[red]No JSON files found in {dataset_dir}[/red]")
         return []
+    total_in_dir = len(json_files)
+    if limit is not None:
+        json_files = json_files[:limit]
+    files_line = f"{len(json_files)}" + (f" (limit of {total_in_dir})" if limit is not None else "")
 
     console.print(
         Panel(
             f"[bold cyan]Diagnostic Accuracy Evaluation[/bold cyan]\n\n"
             f"Endpoint: [yellow]{endpoint}[/yellow]\n"
             f"Dataset: [yellow]{dataset_dir}[/yellow]\n"
-            f"Files: [yellow]{len(json_files)}[/yellow]\n"
-            f"Parallelism: [yellow]{parallelism}[/yellow]",
+            f"Files: [yellow]{files_line}[/yellow]\n"
+            f"Parallelism: [yellow]{parallelism}[/yellow]\n",
             title="[bold white]Configuration[/bold white]",
             border_style="cyan",
         )
@@ -117,7 +134,7 @@ async def run_evaluation(
     results: list[EvaluationResult] = []
     errors: list[tuple[Path, Exception]] = []
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -139,6 +156,9 @@ async def run_evaluation(
                     results.append(result)
                 except Exception as e:
                     errors.append((json_file, e))
+                    console.print(
+                        f"[red]  ✗ {json_file.name}:[/red] {_format_error(e)}"
+                    )
                 finally:
                     progress.advance(task)
 
@@ -149,7 +169,7 @@ async def run_evaluation(
             f"\n[red]Encountered {len(errors)} errors during evaluation[/red]"
         )
         for path, err in errors[:5]:
-            console.print(f"  [dim]• {path.name}: {err}[/dim]")
+            console.print(f"  [dim]• {path.name}:[/dim] {_format_error(err)}")
         if len(errors) > 5:
             console.print(f"  [dim]... and {len(errors) - 5} more[/dim]")
 
@@ -318,6 +338,14 @@ Examples:
         default=Path("data/evals"),
         help="Output directory for results (default: data/evals)",
     )
+    parser.add_argument(
+        "-l",
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Limit evaluation to first N protocol files (for quick tests)",
+    )
 
     args = parser.parse_args()
     console = Console()
@@ -339,6 +367,7 @@ Examples:
             endpoint=args.endpoint,
             dataset_dir=args.dataset_dir,
             parallelism=args.parallelism,
+            limit=args.limit,
         )
     )
 

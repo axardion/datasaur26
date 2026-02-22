@@ -1,10 +1,3 @@
-"""
-Export protocols_corpus.jsonl to GraphRAG-ready documents (JSON).
-Cleans protocol text to remove boilerplate so the knowledge graph and vector DB stay focused on clinical content.
-
-Usage: uv run python -m src.export_graphrag_documents [--limit N]
-"""
-
 import json
 import re
 import sys
@@ -13,7 +6,7 @@ from pathlib import Path
 
 # Paths relative to repo root (parent of src/)
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CORPUS_PATH = REPO_ROOT / "corpus" / "protocols_corpus.jsonl"
+CORPUS_PATH = REPO_ROOT / "corpus" / "protocols_only_complaints_anamnesis_filtered.jsonl"
 OUTPUT_DIR = REPO_ROOT / "data" / "graphrag_input"
 OUTPUT_JSON = OUTPUT_DIR / "documents.json"
 

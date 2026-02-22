@@ -1,9 +1,3 @@
-"""
-Local embedding using Hugging Face sentence-transformers (no external API calls).
-Uses lokeshch19/ModernPubMedBERT for medical/clinical text.
-Register with graphrag_llm so settings.yaml can use type: "local".
-"""
-
 from typing import TYPE_CHECKING, Any, Optional, Unpack
 
 from graphrag_llm.embedding.embedding import LLMEmbedding
@@ -18,7 +12,6 @@ if TYPE_CHECKING:
     from graphrag_llm.tokenizer import Tokenizer
     from graphrag_llm.types import LLMEmbeddingArgs
 
-# Default model if not set in config
 DEFAULT_MODEL = "lokeshch19/ModernPubMedBERT"
 
 
@@ -96,7 +89,6 @@ class LocalPubMedEmbedding(LLMEmbedding):
         return self._tokenizer
 
 
-# Register so create_embedding(type="local", ...) works. Import this module before indexing or running the server.
 register_embedding(
     "local",
     LocalPubMedEmbedding,

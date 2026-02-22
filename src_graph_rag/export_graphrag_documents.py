@@ -4,23 +4,18 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Paths relative to repo root (parent of src/)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CORPUS_PATH = REPO_ROOT / "corpus" / "protocols_only_complaints_anamnesis_filtered.jsonl"
 OUTPUT_DIR = REPO_ROOT / "data" / "graphrag_input"
 OUTPUT_JSON = OUTPUT_DIR / "documents.json"
 
-# Patterns for text cleaning (order matters)
-# 1. Strip leading approval boilerplate: keep from "КЛИНИЧЕСКИЙ ПРОТОКОЛ" onward
 LEADING_BOILERPLATE = re.compile(
     r"^(?:Одобрен|Одобрено|Утверждено)[^К]*(?=КЛИНИЧЕСКИЙ ПРОТОКОЛ)",
     re.IGNORECASE | re.DOTALL,
 )
 
-# ICD-10 code pattern: letter + 2 digits, optional . and 1–2 digits (e.g. A00, A00.0, O14.2, Z99)
 ICD10_PATTERN = re.compile(r"^[A-Z]\d{2}(?:\.\d{1,2})?$", re.IGNORECASE)
 
-# Section 6 (organizational: developers, reviewers, bibliography) - pollutes graph with person names and citations
 SECTION_6_MARKERS = [
     "6. ОРГАНИЗАЦИОННЫЕ АСПЕКТЫ ПРОТОКОЛА",
     "6. ОРГАНИЗАЦИОННЫЕ АСПЕКТЫ",
@@ -29,7 +24,6 @@ SECTION_6_MARKERS = [
     "6.5 Список использованной литературы",
 ]
 
-# Repeated approval/commission line that adds no clinical value (strip from start after protocol title)
 COMMISSION_BOILERPLATE = re.compile(
     r"Одобрен[^.]*\.\s*Объединенной комиссией[^.]*\.\s*",
     re.IGNORECASE,
@@ -55,22 +49,18 @@ def clean_text(text: str) -> str:
     if not text or not text.strip():
         return ""
 
-    # Keep from "КЛИНИЧЕСКИЙ ПРОТОКОЛ" onward (drop leading approval block)
     match = re.search(r"КЛИНИЧЕСКИЙ ПРОТОКОЛ", text, re.IGNORECASE)
     if match:
         text = text[match.start() :]
 
-    # Remove section 6 and everything after (developers, reviewers, bibliography)
     for marker in SECTION_6_MARKERS:
         idx = text.find(marker)
         if idx != -1:
             text = text[:idx]
             break
 
-    # Optional: strip repeated "Одобрен... Объединенной комиссией..." line if it appears again
     text = COMMISSION_BOILERPLATE.sub("", text)
 
-    # Normalize whitespace: multiple spaces/newlines to single space
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -84,12 +74,10 @@ def build_document(record: dict) -> dict | None:
     raw_text = record.get("text", "")
 
     cleaned = clean_text(raw_text)
-    # Prepend ICD codes so the graph can use them as entities
     if icd_codes:
         icd_line = "Коды МКБ-10: " + ", ".join(icd_codes) + ".\n\n"
         cleaned = icd_line + cleaned
 
-    # GraphRAG document schema: id, text, title, creation_date, metadata
     return {
         "id": protocol_id,
         "text": cleaned,

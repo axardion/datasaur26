@@ -4,7 +4,7 @@ Diagnosis server that uses GraphRAG (local search) to return top-3 ICD-10 diagno
 Same contract as mock_server: POST /diagnose with {"symptoms": "..."}.
 Run: uv run uvicorn src.diagnose_server:app --host 127.0.0.1 --port 8000
 """
-import src.local_embedding  # noqa: F401 — register local embedder so config type: local works
+import src_graph_rag.local_embedding  # noqa: F401 — register local embedder so config type: local works
 
 import json
 import re
@@ -15,11 +15,9 @@ from typing import Any, Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-# Repo root and config root (settings.yaml lives in src/)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_ROOT = Path(__file__).resolve().parent  # src/ — directory containing settings.yaml
 
-# Response type passed to GraphRAG so the LLM returns structured JSON
 DIAGNOSIS_RESPONSE_TYPE = """A JSON object with a single key "diagnoses" (array of exactly 3 items).
 Each item must have: "rank" (1, 2, or 3), "diagnosis" (short name in Russian or English), "icd10_code" (ICD-10 code, e.g. J20.9), "explanation" (1-2 sentences).
 Return only valid JSON, no markdown code fences or extra text."""
@@ -27,7 +25,6 @@ Return only valid JSON, no markdown code fences or extra text."""
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load GraphRAG config and index data once at startup."""
     from graphrag_storage import create_storage
     from graphrag_storage.tables.table_provider_factory import create_table_provider
     from graphrag.config.load_config import load_config
@@ -80,16 +77,13 @@ class DiagnoseResponse(BaseModel):
 
 
 def _parse_diagnoses_from_response(raw: str) -> list[dict[str, Any]]:
-    """Extract diagnoses array from LLM response (JSON or markdown-wrapped JSON)."""
     raw = raw.strip()
-    # Remove optional markdown code block
     m = re.search(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", raw)
     if m:
         raw = m.group(1)
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        # Try to find a JSON object in the text
         m = re.search(r"\{[\s\S]*\"diagnoses\"[\s\S]*\}", raw)
         if m:
             try:
@@ -120,7 +114,6 @@ def _parse_diagnoses_from_response(raw: str) -> list[dict[str, Any]]:
 
 @app.post("/diagnose", response_model=DiagnoseResponse)
 async def handle_diagnose(request: DiagnoseRequest) -> DiagnoseResponse:
-    """Run GraphRAG local search on symptoms and return top-3 diagnoses as JSON."""
     import graphrag.api as api
 
     symptoms = request.symptoms or ""
@@ -151,7 +144,6 @@ async def handle_diagnose(request: DiagnoseRequest) -> DiagnoseResponse:
     parsed = _parse_diagnoses_from_response(raw)
 
     if len(parsed) < 3:
-        # Pad with placeholders if LLM returned fewer than 3
         for i in range(len(parsed), 3):
             parsed.append({
                 "rank": i + 1,

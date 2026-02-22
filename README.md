@@ -6,7 +6,40 @@ An AI-powered clinical decision support system that converts patient symptoms in
 
 ---
 
-## How to use the Dockerfile for Juri
+## Three RAG implementations
+
+This repo contains **three** implementations of symptom → ICD-10 diagnosis, each in its own `src_*` directory:
+
+| Implementation    | Directory         | Retrieval / indexing | LLM usage | Best for                          |
+|-------------------|-------------------|----------------------|-----------|------------------------------------|
+| **Direct RAG**    | `src_direct/`     | TF-IDF (sklearn), in-memory | DiReCT-style: premises + symptoms → diagnoses | Quick local runs, minimal setup |
+| **Advanced RAG**  | `src_advanced_rag/` | BM25 + FAISS (E5), RRF fusion, protocol-first ICD ranking | Optional query expansion & rerank | Higher accuracy, offline index in `artifacts/` |
+| **GraphRAG**      | `src_graph_rag/`  | Microsoft GraphRAG (entities, communities, local search) | Local search answer + completion | Rich knowledge graph, **Docker submission** |
+
+### 1. Direct RAG (`src_direct/`)
+
+- **Retrieval:** TF-IDF over protocol chunks (char ngrams, ~1200 chars per chunk). No separate index build.
+- **Flow:** Load protocols from `CORPUS_DIR` → chunk → retrieve top-k by cosine similarity → diversify by protocol → send premises + symptoms to LLM (DiReCT-style) → parse top-N diagnoses.
+- **Key files:** `direct_rag_server.py`, `rag.py`, `prompts.py`, `llm_client.py`.
+- **Run:** `uv run uvicorn src_direct.direct_rag_server:app --host 127.0.0.1 --port 8000` (set `OPENAI_API_KEY`, optional `CORPUS_DIR`, `DIAGNOSIS_MODEL`).
+
+### 2. Advanced RAG (`src_advanced_rag/`)
+
+- **Retrieval:** Hybrid BM25 + vector (FAISS with sentence-transformers, e.g. E5). Results merged with **Reciprocal Rank Fusion (RRF)**. Ranking is **protocol-first**: aggregate chunk scores per protocol, then output ICDs in a strict order (primary → dotted block → dotted meta → block → meta → family).
+- **Flow:** Offline **preprocess** builds `artifacts/` (BM25 chunks, FAISS index, ICD index). Server loads artifacts; for each query optionally expands queries and/or LLM-reranks; ICDRanker returns top diagnoses. Can fall back to protocol-first or corpus ICDs without LLM.
+- **Key files:** `server.py`, `retrieval.py` (HybridRetriever), `icd_ranker.py`, `fusion.py`, `preprocess.py`, `llm_client.py`.
+- **Run:** Build artifacts with `python preprocess.py --corpus <corpus.jsonl>`, then `uv run uvicorn src_advanced_rag.server:app --host 127.0.0.1 --port 8000` (env: `USE_QUERY_EXPANSION`, `USE_LLM_RERANK`).
+
+### 3. GraphRAG (`src_graph_rag/`)
+
+- **Retrieval:** Microsoft **GraphRAG**: knowledge graph (entities, communities, community reports) + **local search**. Embeddings via local sentence-transformers (e.g. multilingual-e5-large); no embedding API at inference.
+- **Flow:** One-time **index** with `graphrag index --config src_graph_rag/settings.yaml` (produces `output/`, uses `data/graphrag_input/`, `prompts/`). Server loads index; for each symptom query runs GraphRAG `local_search` with a fixed response schema → LLM returns top-3 diagnoses with ICD-10 and explanations.
+- **Key files:** `diagnose_server.py`, `settings.yaml`, `local_embedding.py`, `export_graphrag_documents.py`.
+- **Run:** After building the index, `uv run uvicorn src_graph_rag.diagnose_server:app --host 127.0.0.1 --port 8000`. This is the **Docker submission** (see below).
+
+---
+
+## How to use the Dockerfile (GraphRAG submission)
 
 This project uses a **GraphRAG** diagnosis server (`src_graph_rag`). The Dockerfile builds an image that serves on **port 8080**.
 
@@ -112,25 +145,36 @@ uv sync
 
 ### 3. Running validation
 
-**DIRECT RAG (DiReCT-style)** — retrieval-augmented diagnosis using protocol premises:
+Pick one of the three RAG servers (see **Three RAG implementations** above), then run the evaluator against it.
+
+**Option A — Direct RAG** (TF-IDF + DiReCT-style LLM):
 
 ```bash
-# Set GPT-OSS API key (hub.qazcode.ai)
 export OPENAI_API_KEY="your-key"
-
-# Optional: corpus dir (default: data/test_set), model name
 export CORPUS_DIR=./data/test_set
 export DIAGNOSIS_MODEL=gpt-4o
-
-uv run uvicorn src.direct_rag_server:app --host 127.0.0.1 --port 8000
+uv run uvicorn src_direct.direct_rag_server:app --host 127.0.0.1 --port 8000
 ```
 
-This server loads Kazakhstan protocols from `data/test_set`, indexes them with TF-IDF, and for each symptom query retrieves relevant protocol excerpts (premises). The LLM is prompted DiReCT-style to output top-N diagnoses with ICD-10 codes and explanations.
+**Option B — Advanced RAG** (BM25 + FAISS, protocol-first ranking; requires prebuilt `artifacts/`):
+
+```bash
+# First: python -m src_advanced_rag.preprocess --corpus <corpus.jsonl>
+uv run uvicorn src_advanced_rag.server:app --host 127.0.0.1 --port 8000
+```
+
+**Option C — GraphRAG** (submission; requires prebuilt `output/` index):
+
+```bash
+export GRAPHRAG_API_KEY="your-key"
+# First: uv run graphrag index --config src_graph_rag/settings.yaml
+uv run uvicorn src_graph_rag.diagnose_server:app --host 127.0.0.1 --port 8000
+```
 
 **Mock server** (random ICD-10, no LLM):
 
 ```bash
-uv run uvicorn src.mock_server:app --host 127.0.0.1 --port 8000
+uv run uvicorn src_direct.mock_server:app --host 127.0.0.1 --port 8000
 ```
 
 Then run the validation pipeline in a separate terminal:
@@ -146,16 +190,7 @@ uv run python evaluate.py -e http://127.0.0.1:8000/diagnose -d ./data/test_set -
 By default, the evalutaion results will be output to `data/evals`.
 
 ### Docker
-We prepared a Dockerfile to run our mock server example.
-```bash
-docker build -t mock-server .
-docker run -p 8000:8000 mock-server
-```
-Then run the validation as shown above.
-
-Feel free to use the mock-server FastAPI template and Dockerfile structure to build your own project around.
-
-Remember to adjust the CMD in Dockerfile for your real Python server instead of `src.mock_server:app` before submission. 
+The **Dockerfile** builds the **GraphRAG** server (`src_graph_rag`), which serves on **port 8080**. See **How to use the Dockerfile (GraphRAG submission)** at the top of this README for build/run steps. For a mock server locally (no Docker), use `src_direct.mock_server:app` or `src_advanced_rag.mock_server:app` as above. 
 
 ### Submission Checklist
 
@@ -179,14 +214,11 @@ Remember to adjust the CMD in Dockerfile for your real Python server instead of 
 - `data/evals`: evaluation results directory
 - `data/examples/response.json`: example of a JSON response from your project endpoint
 - `data/test_set`: use these to evaluate your solution (protocol JSONs with `text`, `icd_codes`, `query`, `gt`).
+- `data/graphrag_input/`: input documents for GraphRAG index (used by `src_graph_rag`).
 - `notebooks/llm_api_examples.ipynb`: shows how to make a request to GPT-OSS.
-- `src/`: solution source code
-  - `direct_rag_server.py`: **DIRECT RAG** server (DiReCT-style: RAG + LLM diagnosis)
-  - `rag.py`: corpus loading, chunking, TF-IDF retrieval
-  - `prompts.py`: DiReCT-style prompts (premises + symptoms → diagnoses)
-  - `llm_client.py`: GPT-OSS client for diagnosis
-  - `mock_server.py`: example mock endpoint (random ICD-10)
-- `evaluate.py`: runs the given dataset through the provided endpoint.
-- `pyproject.toml`: describes dependencies of the project.
-- `uv.lock`: stores the exact dependency versions, autogenerated by uv.
-- `Dockerfile`: contains build instructions for a Docker image.
+- **`src_direct/`** — Direct RAG (DiReCT-style): `direct_rag_server.py`, `rag.py`, `prompts.py`, `llm_client.py`, `mock_server.py`
+- **`src_advanced_rag/`** — Hybrid RAG: `server.py`, `retrieval.py`, `icd_ranker.py`, `fusion.py`, `preprocess.py`, `llm_client.py`, `mock_server.py`; prebuilt index in `artifacts/`
+- **`src_graph_rag/`** — GraphRAG (submission): `diagnose_server.py`, `settings.yaml`, `local_embedding.py`, `export_graphrag_documents.py`; index in `output/`, prompts in `prompts/`
+- `evaluate.py`: runs the given dataset through the provided endpoint
+- `pyproject.toml`, `uv.lock`: project dependencies
+- `Dockerfile`: builds the GraphRAG server image (port 8080)

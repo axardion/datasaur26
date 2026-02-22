@@ -9,9 +9,10 @@
 completion_models:
   default_completion_model:
     model_provider: openai
-    model: gpt-5-nano
+    model: oss-120-b
     auth_method: api_key
     api_key: ${GRAPHRAG_API_KEY}
+    api_base: ${OPENAI_BASE_URL}
     retry:
       type: exponential_backoff
 

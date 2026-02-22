@@ -6,6 +6,55 @@ An AI-powered clinical decision support system that converts patient symptoms in
 
 ---
 
+## How to use the Dockerfile for Juri
+
+This project uses a **GraphRAG** diagnosis server (`src_graph_rag`). The Dockerfile builds an image that serves on **port 8080**.
+
+### 1. Prerequisites
+
+Build the GraphRAG index locally so `output/`, `data/graphrag_input/`, and `prompts/` exist:
+
+```bash
+uv run graphrag index --config src_graph_rag/settings.yaml
+```
+
+### 2. Build
+
+```bash
+docker build -t submission .
+```
+
+### 3. Run
+
+Server listens on port 8080. Pass your API key for the completion model (LLM):
+
+```bash
+docker run -p 8080:8080 -e GRAPHRAG_API_KEY="your-key" submission
+```
+
+### 4. Optional env at run
+
+| Variable           | Description                            | Default                |
+|--------------------|----------------------------------------|------------------------|
+| `GRAPHRAG_API_KEY` | API key for completion model (LLM)     | *(required)*           |
+| `OPENAI_BASE_URL`  | LLM API base URL                       | `https://hub.qazcode.ai` |
+
+Example with custom base URL:
+
+```bash
+docker run -p 8080:8080 -e GRAPHRAG_API_KEY="..." -e OPENAI_BASE_URL="https://api.openai.com/v1" submission
+```
+
+### 5. Test
+
+```bash
+curl -X POST http://localhost:8080/diagnose -H "Content-Type: application/json" -d '{"symptoms": "headache, fever"}'
+```
+
+Or open **http://localhost:8080/docs** for Swagger UI.
+
+---
+
 ## Challenge Overview
 
 Participants will build an MVP product where users input symptoms as free text and receive:

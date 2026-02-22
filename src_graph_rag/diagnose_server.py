@@ -4,8 +4,9 @@ Diagnosis server that uses GraphRAG (local search) to return top-3 ICD-10 diagno
 Same contract as mock_server: POST /diagnose with {"symptoms": "..."}.
 Run: uv run uvicorn src.diagnose_server:app --host 127.0.0.1 --port 8000
 """
-import src.local_embedding  # noqa: F401 — register local embedder so config type: local works
+import src_graph_rag.local_embedding  # noqa: F401 — register local embedder so config type: local works
 
+import asyncio
 import json
 import re
 from contextlib import asynccontextmanager
@@ -19,6 +20,19 @@ from pydantic import BaseModel
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_ROOT = Path(__file__).resolve().parent  # src/ — directory containing settings.yaml
 
+def _preload_models(config: Any) -> None:
+    """Load embedding (and completion) models at startup so first /diagnose doesn't trigger HF download."""
+    from src_graph_rag.local_embedding import _get_model as get_embedding_model
+
+    emb_id = getattr(config.local_search, "embedding_model_id", None) or "default_embedding_model"
+    emb_models = getattr(config, "embedding_models", {}) or {}
+    emb_cfg = emb_models.get(emb_id)
+    emb_model_name = getattr(emb_cfg, "model", None) if emb_cfg else None
+    if not emb_model_name:
+        emb_model_name = "lokeshch19/ModernPubMedBERT"
+    get_embedding_model(emb_model_name)
+
+
 # Response type passed to GraphRAG so the LLM returns structured JSON
 DIAGNOSIS_RESPONSE_TYPE = """A JSON object with a single key "diagnoses" (array of exactly 3 items).
 Each item must have: "rank" (1, 2, or 3), "diagnosis" (short name in Russian or English), "icd10_code" (ICD-10 code, e.g. J20.9), "explanation" (1-2 sentences).
@@ -27,7 +41,7 @@ Return only valid JSON, no markdown code fences or extra text."""
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load GraphRAG config and index data once at startup."""
+    """Load GraphRAG config, index data, and ML models once at startup (no lazy load on first request)."""
     from graphrag_storage import create_storage
     from graphrag_storage.tables.table_provider_factory import create_table_provider
     from graphrag.config.load_config import load_config
@@ -51,6 +65,14 @@ async def lifespan(app: FastAPI):
         app.state.covariates = None
 
     print("✅ GraphRAG index loaded.")
+
+    # Preload embedding model so first /diagnose doesn't trigger HF download mid-request
+    print("🔄 Preloading embedding model...")
+    try:
+        await asyncio.to_thread(_preload_models, config)
+        print("✅ Models ready.")
+    except Exception as e:
+        print(f"⚠️ Model preload failed (will load on first request): {e}")
     print("\n🏥 Diagnosis Server (GraphRAG)")
     print("=" * 40)
     print("Endpoint: POST /diagnose")
@@ -89,7 +111,6 @@ def _parse_diagnoses_from_response(raw: str) -> list[dict[str, Any]]:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        # Try to find a JSON object in the text
         m = re.search(r"\{[\s\S]*\"diagnoses\"[\s\S]*\}", raw)
         if m:
             try:
@@ -112,11 +133,7 @@ def _parse_diagnoses_from_response(raw: str) -> list[dict[str, Any]]:
             or d.get("name")
             or "—"
         )
-        icd10_code = (
-            d.get("icd10_code")
-            or d.get("icd_code")
-            or ""
-        )
+        icd10_code = d.get("icd10_code") or d.get("icd_code") or ""
         explanation = d.get("explanation") or ""
         if not explanation and d.get("matching_symptoms"):
             explanation = "Matching: " + ", ".join(d.get("matching_symptoms", []))
@@ -133,7 +150,6 @@ def _parse_diagnoses_from_response(raw: str) -> list[dict[str, Any]]:
 
 @app.post("/diagnose", response_model=DiagnoseResponse)
 async def handle_diagnose(request: DiagnoseRequest) -> DiagnoseResponse:
-    """Run GraphRAG local search on symptoms and return top-3 diagnoses as JSON."""
     import graphrag.api as api
 
     symptoms = request.symptoms or ""
@@ -164,7 +180,6 @@ async def handle_diagnose(request: DiagnoseRequest) -> DiagnoseResponse:
     parsed = _parse_diagnoses_from_response(raw)
 
     if len(parsed) < 3:
-        # Pad with placeholders if LLM returned fewer than 3
         for i in range(len(parsed), 3):
             parsed.append({
                 "rank": i + 1,

@@ -1,0 +1,85 @@
+-Goal-
+You are extracting a clinical knowledge graph from Kazakhstan clinical protocol text (МКБ-10 / ICD-10). Identify all clinically relevant entities and relationships for diagnosis assistance: diagnoses, symptoms/complaints, ICD-10 codes, and protocols.
+
+-Steps-
+1. Identify all entities. For each identified entity, extract:
+- entity_name: Short name, capitalized (e.g. diagnosis name, symptom phrase, ICD code as written, protocol title)
+- entity_type: One of: [{entity_types}]
+- entity_description: Brief clinical description (symptoms covered, ICD meaning, or what the protocol is for)
+Format each entity as ("entity"<|><entity_name><|><entity_type><|><entity_description>)
+
+2. From the entities in step 1, identify pairs that are clinically related. For each pair extract:
+- source_entity, target_entity: names from step 1
+- relationship_description: why they are related (e.g. "symptom suggests diagnosis", "protocol covers ICD code", "diagnosis presents with symptom")
+- relationship_strength: 1-10 (10 = very strong clinical link)
+Format each as ("relationship"<|><source_entity><|><target_entity><|><relationship_description><|><relationship_strength>)
+
+3. Return output in English as a single list. Use **##** as the list delimiter.
+
+4. When finished, output <|COMPLETE|>
+
+######################
+-Examples-
+######################
+Example 1:
+Entity_types: diagnosis,symptom,icd_code,protocol
+Text:
+Коды МКБ-10: J20.9, J18.9. Жалобы: кашель, лихорадка, одышка. Острый бронхит (J20.9) и пневмония неуточненная (J18.9) — при кашле и лихорадке показано рентгенологическое исследование.
+######################
+Output:
+("entity"<|>J20.9<|>icd_code<|>ICD-10 code for acute bronchitis unspecified)
+##
+("entity"<|>J18.9<|>icd_code<|>ICD-10 code for pneumonia unspecified)
+##
+("entity"<|>ОСТРЫЙ БРОНХИТ<|>diagnosis<|>Acute bronchitis, unspecified)
+##
+("entity"<|>ПНЕВМОНИЯ НЕУТОЧНЕННАЯ<|>diagnosis<|>Pneumonia unspecified)
+##
+("entity"<|>КАШЕЛЬ<|>symptom<|>Cough)
+##
+("entity"<|>ЛИХОРАДКА<|>symptom<|>Fever)
+##
+("entity"<|>ОДЫШКА<|>symptom<|>Shortness of breath)
+##
+("relationship"<|>КАШЕЛЬ<|>ОСТРЫЙ БРОНХИТ<|>Cough is a typical symptom of acute bronchitis<|>9)
+##
+("relationship"<|>ЛИХОРАДКА<|>ПНЕВМОНИЯ НЕУТОЧНЕННАЯ<|>Fever commonly presents in pneumonia<|>8)
+##
+("relationship"<|>J20.9<|>ОСТРЫЙ БРОНХИТ<|>ICD-10 code J20.9 denotes this diagnosis<|>10)
+##
+("relationship"<|>J18.9<|>ПНЕВМОНИЯ НЕУТОЧНЕННАЯ<|>ICD-10 code J18.9 denotes this diagnosis<|>10)
+<|COMPLETE|>
+
+######################
+Example 2:
+Entity_types: diagnosis,symptom,icd_code,protocol
+Text:
+Коды МКБ-10: G91.1. Жалобы и анамнез: головная боль по утрам, тошнота, рвота натощак, светобоязнь, нарушение походки. У ребенка со шунтом — подозрение на нарушение оттока ликвора; аноксическое поражение головного мозга (G91.1).
+######################
+Output:
+("entity"<|>G91.1<|>icd_code<|>ICD-10 for anoxic brain damage)
+##
+("entity"<|>АНОКСИЧЕСКОЕ ПОРАЖЕНИЕ ГОЛОВНОГО МОЗГА<|>diagnosis<|>Anoxic brain damage)
+##
+("entity"<|>ГОЛОВНАЯ БОЛЬ ПО УТРАМ<|>symptom<|>Morning headache)
+##
+("entity"<|>ТОШНОТА<|>symptom<|>Nausea)
+##
+("entity"<|>РВОТА НАТОЩАК<|>symptom<|>Vomiting on empty stomach)
+##
+("entity"<|>СВЕТОБОЯЗНЬ<|>symptom<|>Photophobia)
+##
+("entity"<|>НАРУШЕНИЕ ПОХОДКИ<|>symptom<|>Gait disturbance)
+##
+("relationship"<|>ГОЛОВНАЯ БОЛЬ ПО УТРАМ<|>АНОКСИЧЕСКОЕ ПОРАЖЕНИЕ ГОЛОВНОГО МОЗГА<|>Morning headache can indicate raised ICP or shunt dysfunction<|>8)
+##
+("relationship"<|>G91.1<|>АНОКСИЧЕСКОЕ ПОРАЖЕНИЕ ГОЛОВНОГО МОЗГА<|>ICD-10 G91.1 denotes this diagnosis<|>10)
+<|COMPLETE|>
+
+######################
+-Real Data-
+######################
+Entity_types: {entity_types}
+Text: {input_text}
+######################
+Output:

@@ -14,11 +14,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Repo root and config root (settings.yaml lives in src/)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_ROOT = Path(__file__).resolve().parent  # src/ — directory containing settings.yaml
+STATIC_DIR = REPO_ROOT / "static"
 
 def _preload_models(config: Any) -> None:
     """Load embedding (and completion) models at startup so first /diagnose doesn't trigger HF download."""
@@ -84,6 +87,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Diagnosis Server (GraphRAG)", lifespan=lifespan)
+
+# Serve UI (medical-style frontend)
+if STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.get("/")
+    async def index():
+        return FileResponse(STATIC_DIR / "index.html")
 
 
 class DiagnoseRequest(BaseModel):

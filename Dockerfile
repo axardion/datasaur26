@@ -28,6 +28,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY src_graph_rag/ ./src_graph_rag/
+COPY static/ ./static/
 
 COPY data/graphrag_input/ ./data/graphrag_input/
 COPY output/ ./output/

@@ -1,0 +1,413 @@
+/* Medical-style UI, Gemini-inspired layout */
+
+:root {
+  --bg-page: #f0fdfa;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --border: #ccfbf1;
+  --border-input: #99f6e4;
+  --primary: #0d9488;
+  --primary-hover: #0f766e;
+  --primary-soft: #ccfbf1;
+  --text: #134e4a;
+  --text-muted: #547a76;
+  --user-bubble: #0f766e;
+  --user-text: #f0fdfa;
+  --assistant-bubble: #ffffff;
+  --shadow: 0 1px 3px rgba(13, 148, 136, 0.08);
+  --radius: 16px;
+  --radius-sm: 12px;
+  --font: 'DM Sans', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font);
+  font-size: 16px;
+  color: var(--text);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header — medical, minimal */
+.header {
+  flex-shrink: 0;
+  padding: 14px 20px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.header-inner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.logo-text {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.tagline {
+  margin: 4px 0 0 42px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Main — Gemini-like centered chat */
+.main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 20px 16px 0;
+  overflow: hidden;
+}
+
+.chat-container {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0 80px;
+}
+
+/* Welcome state */
+.welcome {
+  text-align: center;
+  padding: 48px 24px 32px;
+}
+
+.welcome-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 20px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.welcome h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.welcome p {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin: 0 0 28px;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.suggestion-pill {
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border-input);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.suggestion-pill:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+}
+
+/* Message bubbles */
+.message {
+  margin-bottom: 20px;
+  animation: messageIn 0.25s ease;
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-user .message-content {
+  margin-left: auto;
+  max-width: 85%;
+  background: var(--user-bubble);
+  color: var(--user-text);
+  border-radius: var(--radius) var(--radius) 4px var(--radius);
+  padding: 12px 16px;
+}
+
+.message-assistant .message-content {
+  max-width: 100%;
+  background: var(--assistant-bubble);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.message-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+/* Diagnosis cards (assistant content) */
+.diagnoses-block {
+  padding: 16px;
+}
+
+.diagnoses-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diagnosis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.diagnosis-card {
+  background: var(--bg-page);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  transition: border-color 0.15s;
+}
+
+.diagnosis-card:hover {
+  border-color: var(--border-input);
+}
+
+.diagnosis-card.rank-1 {
+  border-left: 3px solid var(--primary);
+}
+
+.diagnosis-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.diagnosis-rank {
+  width: 24px;
+  height: 24px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.diagnosis-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.icd-badge {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-soft);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.diagnosis-explanation {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* Loading */
+.message-loading .message-content {
+  padding: 16px;
+}
+
+.typing-dots {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.typing-dots span {
+  width: 8px;
+  height: 8px;
+  background: var(--primary);
+  border-radius: 50%;
+  animation: typing 0.6s ease-in-out infinite;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes typing {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* Error */
+.message-error .message-content {
+  border-color: #f87171;
+  background: #fef2f2;
+}
+
+.error-text {
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+/* Input area — Gemini-style */
+.input-area {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 0 24px;
+  background: linear-gradient(to top, var(--bg-page) 60%, transparent);
+}
+
+.input-form {
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius);
+  padding: 8px 12px 8px 16px;
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.1);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-form:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+#symptoms-input {
+  flex: 1;
+  min-height: 44px;
+  max-height: 160px;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 1rem;
+  color: var(--text);
+  resize: none;
+  outline: none;
+}
+
+#symptoms-input::placeholder {
+  color: var(--text-muted);
+}
+
+.send-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 12px;
+  background: var(--primary);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Hide welcome when there are messages */
+.messages.has-messages #welcome {
+  display: none;
+}

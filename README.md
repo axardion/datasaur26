@@ -80,6 +80,9 @@ docker run -p 8080:8080 -e GRAPHRAG_API_KEY="..." -e OPENAI_BASE_URL="https://ap
 
 ### 5. Test
 
+**Web UI:** Open **http://localhost:8080** in a browser for the medical-style diagnosis interface (symptoms input → top diagnoses with ICD-10).
+
+**API:**  
 ```bash
 curl -X POST http://localhost:8080/diagnose -H "Content-Type: application/json" -d '{"symptoms": "headache, fever"}'
 ```

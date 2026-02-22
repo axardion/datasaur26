@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clinical Diagnosis Assistant | Symptoms → ICD-10</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-icon" aria-hidden="true">◇</span>
+          <span class="logo-text">Clinical Diagnosis</span>
+        </div>
+        <p class="tagline">Symptoms → ICD-10 · Kazakhstan protocols</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="chat-container">
+        <div id="messages" class="messages">
+          <div id="welcome" class="welcome">
+            <div class="welcome-icon">◇</div>
+            <h1>Describe the symptoms</h1>
+            <p>Enter patient symptoms in free text. You’ll get top probable diagnoses with ICD-10 codes and brief explanations.</p>
+            <div class="suggestions">
+              <button type="button" class="suggestion-pill" data-symptoms="headache, fever, cough">Headache, fever, cough</button>
+              <button type="button" class="suggestion-pill" data-symptoms="chest pain, shortness of breath">Chest pain, shortness of breath</button>
+              <button type="button" class="suggestion-pill" data-symptoms="abdominal pain, nausea">Abdominal pain, nausea</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-area">
+          <form id="diagnose-form" class="input-form" autocomplete="off">
+            <div class="input-wrapper">
+              <textarea
+                id="symptoms-input"
+                name="symptoms"
+                placeholder="Enter symptoms (e.g. headache, fever, fatigue…)"
+                rows="1"
+                maxlength="2000"
+              ></textarea>
+              <button type="submit" id="submit-btn" class="send-btn" title="Get diagnosis" aria-label="Get diagnosis">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

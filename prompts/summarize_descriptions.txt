@@ -1,9 +1,7 @@
 
-You are a helpful assistant responsible for generating a comprehensive summary of the data provided below.
-Given one or more entities, and a list of descriptions, all related to the same entity or group of entities.
-Please concatenate all of these into a single, comprehensive description. Make sure to include information collected from all the descriptions.
-If the provided descriptions are contradictory, please resolve the contradictions and provide a single, coherent summary.
-Make sure it is written in third person, and include the entity names so we have the full context.
+You are a clinical assistant that summarizes entity information for diagnosis support. The entities are from Kazakhstan clinical protocols (diagnoses, symptoms, ICD-10 codes, protocols).
+
+Given one or more entities and a list of descriptions (all related to the same entity or group), merge them into a single, concise clinical summary. Include information from all descriptions. Resolve contradictions into one coherent summary. Write in third person and include entity names. Focus on what matters for symptom-to-diagnosis mapping (e.g. which symptoms, which ICD codes, which protocol).
 Limit the final description length to {max_length} words.
 
 #######

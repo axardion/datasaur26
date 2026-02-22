@@ -11,17 +11,18 @@ completion_models:
     model_provider: openai
     model: gpt-5-nano
     auth_method: api_key
-    api_key: ${OPENAI_API_KEY}
+    api_key: ${GRAPHRAG_API_KEY}
     retry:
       type: exponential_backoff
 
-# Local embedder (no external calls): lokeshch19/ModernPubMedBERT. Import src.local_embedding before index/server.
+# Local embedder (no external calls): intfloat/multilingual-e5-large, 1024-dim, good for Russian.
 embedding_models:
   default_embedding_model:
     type: local
     model_provider: local
-    model: lokeshch19/ModernPubMedBERT
+    model: intfloat/multilingual-e5-large
     auth_method: api_key
+    api_key: ${GRAPHRAG_API_KEY}
     retry:
       type: exponential_backoff
 
@@ -62,9 +63,18 @@ cache:
     type: file # [file, blob, cosmosdb]
     base_dir: "../cache"
 
+# vector_size must match the embedder: multilingual-e5-large => 1024
 vector_store:
   type: lancedb
   db_uri: "../output/lancedb"
+  vector_size: 1024
+  index_schema:
+    entity_description:
+      vector_size: 1024
+    text_unit_text:
+      vector_size: 1024
+    community_full_content:
+      vector_size: 1024
 
 ### Workflow settings ###
 

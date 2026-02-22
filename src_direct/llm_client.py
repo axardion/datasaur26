@@ -62,28 +62,38 @@ def diagnose_with_rag(
     content = re.sub(r"\n?```\s*$", "", content)
     content = content.strip()
 
-    json_match = re.search(r"\[[\s\S]*\]", content)
-    if json_match:
-        content = json_match.group(0)
-    if not content or not content.startswith("["):
+    obj_match = re.search(r"\{[\s\S]*\}", content)
+    if not obj_match:
         raise ValueError(
-            f"No JSON array in LLM response (first 200 chars: {content[:200]!r})"
+            f"No JSON object in LLM response (first 200 chars: {content[:200]!r})"
         )
     try:
-        out = json.loads(content)
+        data = json.loads(obj_match.group(0))
     except json.JSONDecodeError as e:
         raise ValueError(
             f"Invalid JSON from LLM: {e}. First 300 chars: {content[:300]!r}"
         ) from e
-    if isinstance(out, list):
-        result = []
-        for i, item in enumerate(out[: top_n], 1):
-            if isinstance(item, dict):
-                result.append({
-                    "rank": item.get("rank", i),
-                    "diagnosis": str(item.get("diagnosis", "")),
-                    "icd10_code": str(item.get("icd10_code", "")),
-                    "explanation": str(item.get("explanation", "")),
-                })
-        return result
-    return []
+    if not isinstance(data, dict):
+        return []
+    diagnoses = data.get("diagnoses")
+    if not isinstance(diagnoses, list):
+        return []
+    result = []
+    reasoning = (data.get("reasoning") or "").strip()
+    for i, item in enumerate(diagnoses[:top_n], 1):
+        if not isinstance(item, dict):
+            continue
+        diagnosis_name = item.get("diagnosis_name") or item.get("diagnosis") or ""
+        matching = item.get("matching_symptoms") or []
+        expl = item.get("explanation") or ""
+        if not expl and matching:
+            expl = " ".join(str(x) for x in matching)
+        if not expl and reasoning:
+            expl = reasoning
+        result.append({
+            "rank": item.get("rank", i),
+            "diagnosis": str(diagnosis_name),
+            "icd10_code": str(item.get("icd10_code", "")),
+            "explanation": str(expl),
+        })
+    return result

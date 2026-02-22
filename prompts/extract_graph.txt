@@ -1,115 +1,79 @@
-
 -Goal-
-Given a text document that is potentially relevant to this activity and a list of entity types, identify all entities of those types from the text and all relationships among the identified entities.
- 
+You are extracting a clinical knowledge graph from Kazakhstan clinical protocol text (МКБ-10 / ICD-10). Identify all clinically relevant entities and relationships for diagnosis assistance: diagnoses, symptoms/complaints, ICD-10 codes, and protocols.
+
 -Steps-
-1. Identify all entities. For each identified entity, extract the following information:
-- entity_name: Name of the entity, capitalized
-- entity_type: One of the following types: [{entity_types}]
-- entity_description: Comprehensive description of the entity's attributes and activities
+1. Identify all entities. For each identified entity, extract:
+- entity_name: Short name, capitalized (e.g. diagnosis name, symptom phrase, ICD code as written, protocol title)
+- entity_type: One of: [{entity_types}]
+- entity_description: Brief clinical description (symptoms covered, ICD meaning, or what the protocol is for)
 Format each entity as ("entity"<|><entity_name><|><entity_type><|><entity_description>)
- 
-2. From the entities identified in step 1, identify all pairs of (source_entity, target_entity) that are *clearly related* to each other.
-For each pair of related entities, extract the following information:
-- source_entity: name of the source entity, as identified in step 1
-- target_entity: name of the target entity, as identified in step 1
-- relationship_description: explanation as to why you think the source entity and the target entity are related to each other
-- relationship_strength: a numeric score indicating strength of the relationship between the source entity and target entity
- Format each relationship as ("relationship"<|><source_entity><|><target_entity><|><relationship_description><|><relationship_strength>)
- 
-3. Return output in English as a single list of all the entities and relationships identified in steps 1 and 2. Use **##** as the list delimiter.
- 
+
+2. From the entities in step 1, identify pairs that are clinically related. For each pair extract:
+- source_entity, target_entity: names from step 1
+- relationship_description: why they are related (e.g. "symptom suggests diagnosis", "protocol covers ICD code", "diagnosis presents with symptom")
+- relationship_strength: 1-10 (10 = very strong clinical link)
+Format each as ("relationship"<|><source_entity><|><target_entity><|><relationship_description><|><relationship_strength>)
+
+3. Return output in English as a single list. Use **##** as the list delimiter.
+
 4. When finished, output <|COMPLETE|>
- 
+
 ######################
 -Examples-
 ######################
 Example 1:
-Entity_types: ORGANIZATION,PERSON
+Entity_types: diagnosis,symptom,icd_code,protocol
 Text:
-The Verdantis's Central Institution is scheduled to meet on Monday and Thursday, with the institution planning to release its latest policy decision on Thursday at 1:30 p.m. PDT, followed by a press conference where Central Institution Chair Martin Smith will take questions. Investors expect the Market Strategy Committee to hold its benchmark interest rate steady in a range of 3.5%-3.75%.
+Коды МКБ-10: J20.9, J18.9. Жалобы: кашель, лихорадка, одышка. Острый бронхит (J20.9) и пневмония неуточненная (J18.9) — при кашле и лихорадке показано рентгенологическое исследование.
 ######################
 Output:
-("entity"<|>CENTRAL INSTITUTION<|>ORGANIZATION<|>The Central Institution is the Federal Reserve of Verdantis, which is setting interest rates on Monday and Thursday)
+("entity"<|>J20.9<|>icd_code<|>ICD-10 code for acute bronchitis unspecified)
 ##
-("entity"<|>MARTIN SMITH<|>PERSON<|>Martin Smith is the chair of the Central Institution)
+("entity"<|>J18.9<|>icd_code<|>ICD-10 code for pneumonia unspecified)
 ##
-("entity"<|>MARKET STRATEGY COMMITTEE<|>ORGANIZATION<|>The Central Institution committee makes key decisions about interest rates and the growth of Verdantis's money supply)
+("entity"<|>ОСТРЫЙ БРОНХИТ<|>diagnosis<|>Acute bronchitis, unspecified)
 ##
-("relationship"<|>MARTIN SMITH<|>CENTRAL INSTITUTION<|>Martin Smith is the Chair of the Central Institution and will answer questions at a press conference<|>9)
+("entity"<|>ПНЕВМОНИЯ НЕУТОЧНЕННАЯ<|>diagnosis<|>Pneumonia unspecified)
+##
+("entity"<|>КАШЕЛЬ<|>symptom<|>Cough)
+##
+("entity"<|>ЛИХОРАДКА<|>symptom<|>Fever)
+##
+("entity"<|>ОДЫШКА<|>symptom<|>Shortness of breath)
+##
+("relationship"<|>КАШЕЛЬ<|>ОСТРЫЙ БРОНХИТ<|>Cough is a typical symptom of acute bronchitis<|>9)
+##
+("relationship"<|>ЛИХОРАДКА<|>ПНЕВМОНИЯ НЕУТОЧНЕННАЯ<|>Fever commonly presents in pneumonia<|>8)
+##
+("relationship"<|>J20.9<|>ОСТРЫЙ БРОНХИТ<|>ICD-10 code J20.9 denotes this diagnosis<|>10)
+##
+("relationship"<|>J18.9<|>ПНЕВМОНИЯ НЕУТОЧНЕННАЯ<|>ICD-10 code J18.9 denotes this diagnosis<|>10)
 <|COMPLETE|>
 
 ######################
 Example 2:
-Entity_types: ORGANIZATION
+Entity_types: diagnosis,symptom,icd_code,protocol
 Text:
-TechGlobal's (TG) stock skyrocketed in its opening day on the Global Exchange Thursday. But IPO experts warn that the semiconductor corporation's debut on the public markets isn't indicative of how other newly listed companies may perform.
-
-TechGlobal, a formerly public company, was taken private by Vision Holdings in 2014. The well-established chip designer says it powers 85% of premium smartphones.
+Коды МКБ-10: G91.1. Жалобы и анамнез: головная боль по утрам, тошнота, рвота натощак, светобоязнь, нарушение походки. У ребенка со шунтом — подозрение на нарушение оттока ликвора; аноксическое поражение головного мозга (G91.1).
 ######################
 Output:
-("entity"<|>TECHGLOBAL<|>ORGANIZATION<|>TechGlobal is a stock now listed on the Global Exchange which powers 85% of premium smartphones)
+("entity"<|>G91.1<|>icd_code<|>ICD-10 for anoxic brain damage)
 ##
-("entity"<|>VISION HOLDINGS<|>ORGANIZATION<|>Vision Holdings is a firm that previously owned TechGlobal)
+("entity"<|>АНОКСИЧЕСКОЕ ПОРАЖЕНИЕ ГОЛОВНОГО МОЗГА<|>diagnosis<|>Anoxic brain damage)
 ##
-("relationship"<|>TECHGLOBAL<|>VISION HOLDINGS<|>Vision Holdings formerly owned TechGlobal from 2014 until present<|>5)
-<|COMPLETE|>
-
-######################
-Example 3:
-Entity_types: ORGANIZATION,GEO,PERSON
-Text:
-Five Aurelians jailed for 8 years in Firuzabad and widely regarded as hostages are on their way home to Aurelia.
-
-The swap orchestrated by Quintara was finalized when $8bn of Firuzi funds were transferred to financial institutions in Krohaara, the capital of Quintara.
-
-The exchange initiated in Firuzabad's capital, Tiruzia, led to the four men and one woman, who are also Firuzi nationals, boarding a chartered flight to Krohaara.
-
-They were welcomed by senior Aurelian officials and are now on their way to Aurelia's capital, Cashion.
-
-The Aurelians include 39-year-old businessman Samuel Namara, who has been held in Tiruzia's Alhamia Prison, as well as journalist Durke Bataglani, 59, and environmentalist Meggie Tazbah, 53, who also holds Bratinas nationality.
-######################
-Output:
-("entity"<|>FIRUZABAD<|>GEO<|>Firuzabad held Aurelians as hostages)
+("entity"<|>ГОЛОВНАЯ БОЛЬ ПО УТРАМ<|>symptom<|>Morning headache)
 ##
-("entity"<|>AURELIA<|>GEO<|>Country seeking to release hostages)
+("entity"<|>ТОШНОТА<|>symptom<|>Nausea)
 ##
-("entity"<|>QUINTARA<|>GEO<|>Country that negotiated a swap of money in exchange for hostages)
+("entity"<|>РВОТА НАТОЩАК<|>symptom<|>Vomiting on empty stomach)
 ##
+("entity"<|>СВЕТОБОЯЗНЬ<|>symptom<|>Photophobia)
 ##
-("entity"<|>TIRUZIA<|>GEO<|>Capital of Firuzabad where the Aurelians were being held)
+("entity"<|>НАРУШЕНИЕ ПОХОДКИ<|>symptom<|>Gait disturbance)
 ##
-("entity"<|>KROHAARA<|>GEO<|>Capital city in Quintara)
+("relationship"<|>ГОЛОВНАЯ БОЛЬ ПО УТРАМ<|>АНОКСИЧЕСКОЕ ПОРАЖЕНИЕ ГОЛОВНОГО МОЗГА<|>Morning headache can indicate raised ICP or shunt dysfunction<|>8)
 ##
-("entity"<|>CASHION<|>GEO<|>Capital city in Aurelia)
-##
-("entity"<|>SAMUEL NAMARA<|>PERSON<|>Aurelian who spent time in Tiruzia's Alhamia Prison)
-##
-("entity"<|>ALHAMIA PRISON<|>GEO<|>Prison in Tiruzia)
-##
-("entity"<|>DURKE BATAGLANI<|>PERSON<|>Aurelian journalist who was held hostage)
-##
-("entity"<|>MEGGIE TAZBAH<|>PERSON<|>Bratinas national and environmentalist who was held hostage)
-##
-("relationship"<|>FIRUZABAD<|>AURELIA<|>Firuzabad negotiated a hostage exchange with Aurelia<|>2)
-##
-("relationship"<|>QUINTARA<|>AURELIA<|>Quintara brokered the hostage exchange between Firuzabad and Aurelia<|>2)
-##
-("relationship"<|>QUINTARA<|>FIRUZABAD<|>Quintara brokered the hostage exchange between Firuzabad and Aurelia<|>2)
-##
-("relationship"<|>SAMUEL NAMARA<|>ALHAMIA PRISON<|>Samuel Namara was a prisoner at Alhamia prison<|>8)
-##
-("relationship"<|>SAMUEL NAMARA<|>MEGGIE TAZBAH<|>Samuel Namara and Meggie Tazbah were exchanged in the same hostage release<|>2)
-##
-("relationship"<|>SAMUEL NAMARA<|>DURKE BATAGLANI<|>Samuel Namara and Durke Bataglani were exchanged in the same hostage release<|>2)
-##
-("relationship"<|>MEGGIE TAZBAH<|>DURKE BATAGLANI<|>Meggie Tazbah and Durke Bataglani were exchanged in the same hostage release<|>2)
-##
-("relationship"<|>SAMUEL NAMARA<|>FIRUZABAD<|>Samuel Namara was a hostage in Firuzabad<|>2)
-##
-("relationship"<|>MEGGIE TAZBAH<|>FIRUZABAD<|>Meggie Tazbah was a hostage in Firuzabad<|>2)
-##
-("relationship"<|>DURKE BATAGLANI<|>FIRUZABAD<|>Durke Bataglani was a hostage in Firuzabad<|>2)
+("relationship"<|>G91.1<|>АНОКСИЧЕСКОЕ ПОРАЖЕНИЕ ГОЛОВНОГО МОЗГА<|>ICD-10 G91.1 denotes this diagnosis<|>10)
 <|COMPLETE|>
 
 ######################
